@@ -107,9 +107,17 @@ impl zed::Extension for CucumberExtension {
             .and_then(|lsp_settings| lsp_settings.settings.clone())
             .unwrap_or_default();
 
-        Ok(Some(zed::serde_json::json!({
-            "cucumber": settings
-        })))
+        let mut config = zed::serde_json::Map::new();
+        // For pull: Zed extracts config["cucumber"] for section "cucumber"
+        config.insert("cucumber".to_string(), settings.clone());
+        // For push: server accesses params.settings.features directly
+        if let zed::serde_json::Value::Object(map) = &settings {
+            for (key, value) in map {
+                config.insert(key.clone(), value.clone());
+            }
+        }
+
+        Ok(Some(zed::serde_json::Value::Object(config)))
     }
 }
 
