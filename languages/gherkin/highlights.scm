@@ -57,17 +57,29 @@
 
 (step_param) @variable.parameter
 
+(step_quoted_string) @type
+
+(step_context) @string
+
 (tag) @type
 
 (table_head_row
   (table_col
     (table_cell) @markup.heading))
 
+(data_table
+  (table_row
+    (table_col
+      (table_cell) @string)))
+
+(description) @comment.doc
+
 ":" @punctuation.delimiter
 
 "|" @punctuation.special
 
 (doc_string) @string.documentation
+(doc_string_content) @string
 (media_type) @type
 
 "language" @property

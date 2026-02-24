@@ -12,4 +12,4 @@ language = "Gherkin"
 
 [grammars.gherkin]
 repository = "https://github.com/alistairstead/tree-sitter-gherkin"
-commit = "4c07d4776f74a071241cfe0e5470063cd61d40dd"
+commit = "ce7dca2734edc690479bb7639fe494668cf7399a"
