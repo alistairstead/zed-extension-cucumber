@@ -25,3 +25,9 @@
     (rule_line
       (rule_kw) @context
       (context) @name))) @item
+
+(examples_definition
+  (examples
+    (examples_line
+      (examples_kw) @context
+      (context) @name))) @item
