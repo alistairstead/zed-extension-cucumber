@@ -12,7 +12,14 @@ struct CucumberExtension {
 const SERVER_BINARY: &str = "cucumber-language-server";
 const SERVER_PATH: &str =
     "node_modules/@cucumber/language-server/bin/cucumber-language-server.cjs";
-const PACKAGE_NAME: &str = "@cucumber/language-server";
+// Use the fork that adds Kotlin support and fixes the reindex crash.
+// npm install interprets "user/repo#branch" as a GitHub install; the package
+// still installs under node_modules/@cucumber/language-server because that is
+// the name in the fork's package.json.
+// Fork of @cucumber/language-server with Kotlin support and reindex crash fix.
+// Installs under node_modules/@cucumber/language-server (unchanged package name).
+const PACKAGE_INSTALL_SPEC: &str = "marton78/language-server";
+const PACKAGE_INSTALL_REF: &str = "kotlin-support";
 
 /// Step keywords mapped to their tree-sitter highlight group.
 const STEP_KEYWORDS: &[(&str, &str)] = &[
@@ -43,7 +50,9 @@ impl CucumberExtension {
 
     fn server_script_path(&mut self, id: &zed::LanguageServerId) -> zed::Result<String> {
         let server_exists = self.server_exists();
+        eprintln!("[cucumber] server_script_path: server_exists={server_exists}, did_find_server={}", self.did_find_server);
         if self.did_find_server && server_exists {
+            eprintln!("[cucumber] reusing cached server at {SERVER_PATH}");
             return Ok(SERVER_PATH.to_string());
         }
 
@@ -51,25 +60,30 @@ impl CucumberExtension {
             id,
             &zed::LanguageServerInstallationStatus::CheckingForUpdate,
         );
-        let version = zed::npm_package_latest_version(PACKAGE_NAME)?;
 
-        if !server_exists
-            || zed::npm_package_installed_version(PACKAGE_NAME)?.as_ref() != Some(&version)
-        {
+        if !server_exists {
+            eprintln!("[cucumber] installing from GitHub: {PACKAGE_INSTALL_SPEC}#{PACKAGE_INSTALL_REF}");
             zed::set_language_server_installation_status(
                 id,
                 &zed::LanguageServerInstallationStatus::Downloading,
             );
-            let result = zed::npm_install_package(PACKAGE_NAME, &version);
+            // npm interprets "user/repo" as a GitHub install; "#branch" pins the ref.
+            // The package installs under node_modules/@cucumber/language-server because
+            // that is the name in the fork's package.json.
+            let result = zed::npm_install_package(PACKAGE_INSTALL_SPEC, PACKAGE_INSTALL_REF);
             match result {
                 Ok(()) => {
                     if !self.server_exists() {
-                        Err(format!(
-                            "installed package '{PACKAGE_NAME}' did not contain expected path '{SERVER_PATH}'",
-                        ))?;
+                        let msg = format!(
+                            "installed package '{PACKAGE_INSTALL_SPEC}' did not contain expected path '{SERVER_PATH}'",
+                        );
+                        eprintln!("[cucumber] ERROR: {msg}");
+                        Err(msg)?;
                     }
+                    eprintln!("[cucumber] npm install succeeded");
                 }
                 Err(error) => {
+                    eprintln!("[cucumber] npm install error: {error}");
                     if !self.server_exists() {
                         Err(error)?;
                     }
@@ -99,21 +113,27 @@ impl zed::Extension for CucumberExtension {
     ) -> zed::Result<zed::Command> {
         let lsp_args = vec!["--stdio".into()];
         let (command, args) = match worktree.which(SERVER_BINARY) {
-            Some(command) => (command, lsp_args),
+            Some(path) => {
+                eprintln!("[cucumber] found {SERVER_BINARY} in PATH at: {path}");
+                (path, lsp_args)
+            }
             None => {
+                eprintln!("[cucumber] {SERVER_BINARY} not found in PATH, falling back to npm install");
                 let script_path = self.server_script_path(language_server_id)?;
                 let mut args = lsp_args.clone();
-                args.insert(
-                    0,
-                    env::current_dir()
-                        .unwrap()
-                        .join(&script_path)
-                        .to_string_lossy()
-                        .to_string(),
-                );
-                (zed::node_binary_path()?, args)
+                let abs_path = env::current_dir()
+                    .unwrap()
+                    .join(&script_path)
+                    .to_string_lossy()
+                    .to_string();
+                eprintln!("[cucumber] using script at: {abs_path}");
+                args.insert(0, abs_path);
+                let node = zed::node_binary_path()?;
+                eprintln!("[cucumber] node binary: {node}");
+                (node, args)
             }
         };
+        eprintln!("[cucumber] launching: {command} {}", args.join(" "));
         Ok(zed::Command {
             command,
             args,
