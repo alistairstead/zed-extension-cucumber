@@ -16,10 +16,7 @@ const SERVER_PATH: &str =
 // npm install interprets "user/repo#branch" as a GitHub install; the package
 // still installs under node_modules/@cucumber/language-server because that is
 // the name in the fork's package.json.
-// Fork of @cucumber/language-server with Kotlin support and reindex crash fix.
-// Installs under node_modules/@cucumber/language-server (unchanged package name).
-const PACKAGE_INSTALL_SPEC: &str = "marton78/language-server";
-const PACKAGE_INSTALL_REF: &str = "kotlin-support";
+const PACKAGE_NAME: &str = "@cucumber/language-server";
 
 /// Step keywords mapped to their tree-sitter highlight group.
 const STEP_KEYWORDS: &[(&str, &str)] = &[
@@ -61,21 +58,27 @@ impl CucumberExtension {
             &zed::LanguageServerInstallationStatus::CheckingForUpdate,
         );
 
-        if !server_exists {
-            eprintln!("[cucumber] installing from GitHub: {PACKAGE_INSTALL_SPEC}#{PACKAGE_INSTALL_REF}");
+        zed::set_language_server_installation_status(
+            id,
+            &zed::LanguageServerInstallationStatus::CheckingForUpdate,
+        );
+        let version = zed::npm_package_latest_version(PACKAGE_NAME)?;
+        eprintln!("[cucumber] latest npm version: {version}");
+
+        if !server_exists
+            || zed::npm_package_installed_version(PACKAGE_NAME)?.as_ref() != Some(&version)
+        {
+            eprintln!("[cucumber] installing {PACKAGE_NAME}@{version}");
             zed::set_language_server_installation_status(
                 id,
                 &zed::LanguageServerInstallationStatus::Downloading,
             );
-            // npm interprets "user/repo" as a GitHub install; "#branch" pins the ref.
-            // The package installs under node_modules/@cucumber/language-server because
-            // that is the name in the fork's package.json.
-            let result = zed::npm_install_package(PACKAGE_INSTALL_SPEC, PACKAGE_INSTALL_REF);
+            let result = zed::npm_install_package(PACKAGE_NAME, &version);
             match result {
                 Ok(()) => {
                     if !self.server_exists() {
                         let msg = format!(
-                            "installed package '{PACKAGE_INSTALL_SPEC}' did not contain expected path '{SERVER_PATH}'",
+                            "installed package '{PACKAGE_NAME}' did not contain expected path '{SERVER_PATH}'",
                         );
                         eprintln!("[cucumber] ERROR: {msg}");
                         Err(msg)?;
